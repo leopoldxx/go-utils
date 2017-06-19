@@ -20,9 +20,7 @@ func (b *Barrier) Advance() {
 	if b == nil {
 		return
 	}
-	select {
-	case <-b.c:
-	}
+	<-b.c
 }
 
 // Done means outside will release the go routine

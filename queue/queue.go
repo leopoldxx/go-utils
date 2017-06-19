@@ -12,7 +12,7 @@ import (
 
 // const
 const (
-	HandleTimeout = 5 * time.Second
+	HandleTimeout = 3 * time.Second
 )
 
 // HandlerWrap function for Handler interface
@@ -95,8 +95,12 @@ func (mq *MsgQueue) Run() {
 
 					tmpCh := make(chan error, 1)
 					defer close(tmpCh)
+					go func() {
+						tmpCh <- h.Handle(ctx, body)
+					}()
+
 					select {
-					case tmpCh <- h.Handle(ctx, body):
+					case <-tmpCh:
 					case <-ctx.Done():
 					}
 				}(h, ctx, mb.body)
