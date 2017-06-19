@@ -87,15 +87,14 @@ func (mq *MsgQueue) Run() {
 					tracer := trace.GetTraceFromContext(ctx)
 					defer wg.Done()
 
-					defer func() {
-						if r := recover(); r != nil {
-							tracer.Errorf("panic: %v\n", r)
-						}
-					}()
-
 					tmpCh := make(chan error, 1)
 					defer close(tmpCh)
 					go func() {
+						defer func() {
+							if r := recover(); r != nil {
+								tracer.Errorf("panic: %v\n", r)
+							}
+						}()
 						tmpCh <- h.Handle(ctx, body)
 					}()
 
