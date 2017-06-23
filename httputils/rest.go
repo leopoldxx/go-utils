@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 
 	"github.com/leopoldxx/go-utils/trace"
 )
@@ -230,6 +231,11 @@ func (rest *RestCli) Do() (*Response, error) {
 		}
 		return nil, err
 	}
+
+	if strings.EqualFold(rest.querys.Get("Connection"), "close") {
+		req.Close = true
+	}
+
 	resp, err := ClientDo(rest.cli, req, rest.isStream)
 	if err != nil {
 		if rest.debug >= Debug1 {

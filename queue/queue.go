@@ -12,7 +12,7 @@ import (
 
 // const
 const (
-	HandleTimeout = 3 * time.Second
+	HandleTimeout = 5 * time.Second
 )
 
 // HandlerWrap function for Handler interface
