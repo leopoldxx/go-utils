@@ -28,5 +28,8 @@ func (b *Barrier) Done() {
 	if b == nil {
 		return
 	}
-	b.c <- struct{}{}
+	select {
+	case b.c <- struct{}{}:
+	default:
+	}
 }

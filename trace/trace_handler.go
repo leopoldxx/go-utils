@@ -19,8 +19,10 @@ import (
 	"net/http"
 )
 
+type key int
+
 const (
-	tracerLogHandlerID = "tracer-handler-id-757b345cf9312183e788faaee990d349"
+	tracerLogHandlerID key = 32702 // random key
 )
 
 // Handler wrap a trace handler outer the original http.Handler

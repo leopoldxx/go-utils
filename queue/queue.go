@@ -1,10 +1,12 @@
 package queue
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 	"time"
 
+	"github.com/leopoldxx/go-utils/concurrency"
 	"github.com/leopoldxx/go-utils/trace"
 
 	"context"
@@ -16,22 +18,35 @@ const (
 )
 
 // HandlerWrap function for Handler interface
-func HandlerWrap(f func(ctx context.Context, data []byte) error) *HandlerWrapper {
-	return &HandlerWrapper{f}
+func HandlerWrap(name string, f func(ctx context.Context, data []byte) error) *HandlerWrapper {
+	return &HandlerWrapper{name, f}
 }
 
 // HandlerWrapper for Handler
 type HandlerWrapper struct {
-	Impl func(ctx context.Context, data []byte) error
+	NameValue string
+	Impl      func(ctx context.Context, data []byte) error
 }
 
 // Handle of hw
 func (hw *HandlerWrapper) Handle(ctx context.Context, data []byte) error {
+	if hw == nil {
+		return errors.New("nil handler")
+	}
 	return hw.Impl(ctx, data)
+}
+
+// Name of the handler
+func (hw *HandlerWrapper) Name() string {
+	if hw == nil {
+		return "<nil>"
+	}
+	return hw.NameValue
 }
 
 // Handler of MsgQue
 type Handler interface {
+	Name() string
 	Handle(ctx context.Context, data []byte) error
 }
 
@@ -76,40 +91,51 @@ func (mq *MsgQueue) Stop() {
 
 // Run the background processor
 func (mq *MsgQueue) Run() {
+	handleBarrier := concurrency.NewBarrier(100)
 	handle := func(mq *MsgQueue, mb *msgBody) {
-		var wg sync.WaitGroup
 		mq.mu.Lock()
-		if hs, ok := mq.handlers[mb.topic]; ok {
-			ctx, cancel := context.WithTimeout(mq.stopCtx, HandleTimeout)
+		hs, ok := mq.handlers[mb.topic]
+		tmphs := make([]Handler, 0, len(hs))
+		if ok {
 			for h := range hs {
-				wg.Add(1)
-				go func(h Handler, ctx context.Context, body []byte) {
-					tracer := trace.GetTraceFromContext(ctx)
-					defer wg.Done()
-
-					tmpCh := make(chan error, 1)
-					defer close(tmpCh)
-					go func() {
-						defer func() {
-							if r := recover(); r != nil {
-								tracer.Errorf("panic: %v\n", r)
-							}
-						}()
-						tmpCh <- h.Handle(ctx, body)
-					}()
-
-					select {
-					case <-tmpCh:
-					case <-ctx.Done():
-					}
-				}(h, ctx, mb.body)
+				tmphs = append(tmphs, h)
 			}
-			mq.mu.Unlock()
-			wg.Wait()
-			cancel()
-		} else {
-			mq.mu.Unlock()
 		}
+		mq.mu.Unlock()
+		defer handleBarrier.Done()
+
+		var wg sync.WaitGroup
+		ctx, cancel := context.WithTimeout(mq.stopCtx, HandleTimeout)
+		defer cancel()
+		for h := range tmphs {
+			wg.Add(1)
+			go func(hd Handler, ctx context.Context, body []byte) {
+				ctx = trace.WithTraceForContext(ctx, hd.Name())
+				tracer := trace.GetTraceFromContext(ctx)
+				defer func() {
+					if r := recover(); r != nil {
+						tracer.Errorf("handler %s panic: %v\n", hd.Name(), r)
+					}
+				}()
+				defer wg.Done()
+
+				tmpCh := make(chan error, 1)
+				go func() {
+					defer func() {
+						if r := recover(); r != nil {
+							tracer.Errorf("handler %s panic: %v\n", hd.Name(), r)
+						}
+					}()
+					tmpCh <- hd.Handle(ctx, body)
+				}()
+
+				select {
+				case <-tmpCh:
+				case <-ctx.Done():
+				}
+			}(tmphs[h], ctx, mb.body)
+		}
+		wg.Wait()
 	}
 
 	for {
@@ -118,7 +144,8 @@ func (mq *MsgQueue) Run() {
 			close(mq.data)
 			return
 		case msg := <-mq.data:
-			handle(mq, &msg)
+			handleBarrier.Advance()
+			go handle(mq, &msg)
 		}
 	}
 }
