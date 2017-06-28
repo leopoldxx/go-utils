@@ -35,6 +35,7 @@ type RestCli struct {
 	resource string
 	headers  map[string]string
 	querys   url.Values
+	formData url.Values
 	body     io.Reader
 	object   interface{}
 	into     map[string]interface{}
@@ -60,7 +61,7 @@ func NewRestCli() *RestCli {
 		api:      "http://127.0.0.1/",
 		host:     "http://127.0.0.1",
 		resource: "/",
-		headers:  map[string]string{"Content-Type": "application/json"},
+		headers:  map[string]string{},
 		querys:   url.Values{},
 		into:     map[string]interface{}{},
 		debug:    Debug0,
@@ -158,6 +159,12 @@ func (rest *RestCli) ClearQuery(query string) *RestCli {
 	return rest
 }
 
+// FormData will set the body object for the form request
+func (rest *RestCli) FormData(data url.Values) *RestCli {
+	rest.formData = data
+	return rest
+}
+
 // Object will set the body object for the rest request
 func (rest *RestCli) Object(body interface{}) *RestCli {
 	rest.object = body
@@ -212,10 +219,30 @@ func (rest *RestCli) Do() (*Response, error) {
 			}
 			return nil, err
 		}
+		bodyReader = bytes.NewReader(body)
+		if rest.method == "GET" || rest.method == "HEAD" || rest.method == "DELETE" {
+			rest.method = "POST"
+		}
+		if _, ok := rest.headers["Content-Type"]; !ok {
+			rest.headers["Content-Type"] = "application/json"
+		}
 		if rest.debug >= Debug2 {
+			tracer.Infof("req header: %v", rest.headers)
 			tracer.Infof("req body: %v", string(body))
 		}
-		bodyReader = bytes.NewReader(body)
+	} else if rest.formData != nil {
+		body := rest.formData.Encode()
+		bodyReader = strings.NewReader(body)
+		if rest.method == "GET" || rest.method == "HEAD" || rest.method == "DELETE" {
+			rest.method = "POST"
+		}
+		if _, ok := rest.headers["Content-Type"]; !ok {
+			rest.headers["Content-Type"] = "application/x-www-form-urlencoded"
+		}
+		if rest.debug >= Debug2 {
+			tracer.Infof("req header: %v", rest.headers)
+			tracer.Infof("req body: %v", body)
+		}
 	}
 
 	req, err := NewRequest(
@@ -244,19 +271,20 @@ func (rest *RestCli) Do() (*Response, error) {
 		return nil, err
 	}
 	if rest.debug >= Debug1 {
-		tracer.Infof("resp status: %v, header: %v",
-			resp.Status,
-			resp.Header)
+		tracer.Infof("resp status: %v, header: %v", resp.Status, resp.Header)
 	}
 
 	if rest.isStream {
 		return &resp, nil
 	}
 
-	if len(rest.into) > 0 {
-		if rest.debug >= Debug2 {
+	if rest.debug >= Debug2 {
+		if len(resp.Body) > 0 {
 			tracer.Infof("resp body: %v", string(resp.Body))
 		}
+	}
+
+	if len(rest.into) > 0 {
 		status := strconv.Itoa(resp.Status)
 		if len(status) == 3 {
 			ss := []string{
