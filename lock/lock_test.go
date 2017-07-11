@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/coreos/etcd/clientv3"
+	"github.com/leopoldxx/go-utils/trace"
 )
 
 func newClientv3(t *testing.T) *clientv3.Client {
@@ -24,7 +25,7 @@ func TestLockCancel(t *testing.T) {
 	locker := New(newClientv3(t))
 	ctx, cancel := context.WithTimeout(context.TODO(), time.Millisecond)
 	defer cancel()
-	_, err := locker.Trylock("/test/distributed/locker/key", ctx)
+	_, _, err := locker.Trylock(ctx, "/test/distributed/locker/key")
 	if err != context.DeadlineExceeded {
 		t.Fatalf("lock must failed by context.DeadlineExceeded: %s", err)
 	}
@@ -109,7 +110,7 @@ func TestLock(t *testing.T) {
 				ctx, cancel := context.WithCancel(context.TODO())
 				defer cancel()
 
-				unlock, err := locker.Trylock(fmt.Sprintf("/test/distributed/locker/key%d", i), ctx, WithTTL(test.lockTime[idx]*time.Millisecond))
+				unlock, ctx, err := locker.Trylock(ctx, fmt.Sprintf("/test/distributed/locker/key%d", i), WithTTL(test.lockTime[idx]*time.Millisecond))
 				if err != nil {
 					t.Logf("lock %d,%v failed: %s, %v", idx, test, err, time.Now())
 					failedCountChan <- 1
@@ -131,4 +132,46 @@ func TestLock(t *testing.T) {
 			t.Fatalf("expect %d, got %d", test.expectFailedCount, failedCount)
 		}
 	}
+}
+
+func TestSessionClosed(t *testing.T) {
+	locker := New(newClientv3(t))
+	locker2 := New(newClientv3(t))
+
+	ctx, cancel := context.WithCancel(context.TODO())
+	defer cancel()
+	tracer := trace.GetTraceFromContext(ctx)
+
+	_, lctx, _ := locker.Trylock(ctx, "/test/distributed/locker/key", WithTTL(time.Second))
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		_, lctx, err := locker2.Trylock(ctx, "/test/distributed/locker/key", WithTTL(time.Second*10))
+		tracer.Info(err)
+		if err != nil {
+			tracer.Errorf("locker2 lock failed: %s", err)
+		} else {
+			tracer.Info("locker2 get the lock ownership")
+		}
+		_, lctx, err = locker2.Trylock(ctx, "/test/distributed/locker/key", WithTTL(time.Second))
+		tracer.Info(err)
+		if err == nil {
+			tracer.Info("locker2 get the lock ownership")
+		}
+		select {
+		case <-lctx.Done():
+			tracer.Info("locker2 lose the lock ownership")
+		}
+
+	}()
+
+	tracer.Info("locker1 get the lock ownership")
+
+	select {
+	case <-lctx.Done():
+		tracer.Info("locker1 lose the lock ownership by session closed")
+	}
+	wg.Wait()
 }

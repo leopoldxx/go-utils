@@ -19,7 +19,7 @@ type Unlocker func()
 // Locker is an interface that have a trylock method.
 // It will lock on the specific key, different key will not be interfered.
 type Locker interface {
-	Trylock(key string, ctx context.Context, ops ...Options) (Unlocker, error)
+	Trylock(ctx context.Context, key string, ops ...Options) (Unlocker, context.Context, error)
 }
 
 // Options config Locker
@@ -56,9 +56,9 @@ type locker struct {
 	opts    *options
 }
 
-func (l *locker) Trylock(key string, ctx context.Context, ops ...Options) (Unlocker, error) {
+func (l *locker) Trylock(ctx context.Context, key string, ops ...Options) (Unlocker, context.Context, error) {
 	if l == nil {
-		return nil, errors.New("nil locker")
+		return nil, nil, errors.New("nil locker")
 	}
 	opts := *l.opts
 	for _, op := range ops {
@@ -69,8 +69,9 @@ func (l *locker) Trylock(key string, ctx context.Context, ops ...Options) (Unloc
 	}
 
 	type result struct {
-		f Unlocker
-		e error
+		f   Unlocker
+		ctx context.Context
+		e   error
 	}
 
 	tmpCh := make(chan result, 1)
@@ -82,47 +83,57 @@ func (l *locker) Trylock(key string, ctx context.Context, ops ...Options) (Unloc
 	go func() {
 		s, err := concurrency.NewSession(l.etcdCli, concurrency.WithContext(cancelCtx), concurrency.WithTTL(1 /* 1s */))
 		if err != nil {
-			cancelFunc() // re-cancel is ok
-			tmpCh <- result{nil, err}
-			return
-		}
-		closeSession := func() {
-			select {
-			case <-cancelCtx.Done():
-				return
-			default:
-			}
-			if s != nil {
-				s.Close()
-			}
 			cancelFunc()
+			tmpCh <- result{nil, nil, err}
+			return
 		}
 
 		mtx := concurrency.NewMutex(s, key)
 		err = mtx.Lock(timeoutCtx)
 		if err != nil {
-			closeSession()
-			tmpCh <- result{nil, err}
+			s.Close()
+			cancelFunc()
+			tmpCh <- result{nil, nil, err}
 			return
 		}
+		select {
+		case <-s.Done():
+			mtx.Unlock(cancelCtx)
+			tmpCh <- result{nil, nil, errors.New("session closed")}
+			return
+		default:
+		}
+
+		go func() {
+			select {
+			case <-s.Done():
+			case <-ctx.Done():
+			case <-cancelCtx.Done():
+			}
+			cancelFunc()
+			s.Close()
+		}()
+
 		tmpCh <- result{
 			func() {
 				newCtx, cancel := context.WithTimeout(context.TODO(), time.Second)
 				defer cancel()
 				mtx.Unlock(newCtx)
-				closeSession()
-			}, nil,
+				cancelFunc()
+			},
+			cancelCtx,
+			nil,
 		}
 	}()
 
 	select {
 	case <-ctx.Done():
 		cancelFunc()
-		return nil, ctx.Err()
+		return nil, nil, ctx.Err()
 	case <-timeoutCtx.Done():
 		cancelFunc()
-		return nil, timeoutCtx.Err()
+		return nil, nil, timeoutCtx.Err()
 	case res := <-tmpCh:
-		return res.f, res.e
+		return res.f, res.ctx, res.e
 	}
 }
