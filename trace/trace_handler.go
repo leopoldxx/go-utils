@@ -76,3 +76,11 @@ func GetTraceFromContext(ctx context.Context) Trace {
 func WithTraceForContext(ctx context.Context, traceName string, traceID ...string) context.Context {
 	return context.WithValue(ctx, tracerLogHandlerID, New(traceName, traceID...))
 }
+
+// WithTraceForContext2 will return a new context wrapped a trace handler around the original ctx
+func WithTraceForContext2(ctx context.Context, tracer Trace) context.Context {
+	if tracer == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, tracerLogHandlerID, tracer)
+}
