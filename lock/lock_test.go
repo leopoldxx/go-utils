@@ -142,8 +142,6 @@ func TestSessionClosed(t *testing.T) {
 	defer cancel()
 	tracer := trace.GetTraceFromContext(ctx)
 
-	_, lctx, _ := locker.Trylock(ctx, "/test/distributed/locker/key", WithTTL(time.Second))
-
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
@@ -155,23 +153,45 @@ func TestSessionClosed(t *testing.T) {
 		} else {
 			tracer.Info("locker2 get the lock ownership")
 		}
-		_, lctx, err = locker2.Trylock(ctx, "/test/distributed/locker/key", WithTTL(time.Second))
+		<-lctx.Done()
+		tracer.Info("locker2 try to get lock again")
+		_, lctx, err = locker2.Trylock(ctx, "/test/distributed/locker/key", WithTTL(time.Second*20))
 		tracer.Info(err)
 		if err == nil {
 			tracer.Info("locker2 get the lock ownership")
-		}
-		select {
-		case <-lctx.Done():
-			tracer.Info("locker2 lose the lock ownership")
+			select {
+			case <-lctx.Done():
+				tracer.Info("locker2 lose the lock ownership")
+			}
 		}
 
 	}()
 
-	tracer.Info("locker1 get the lock ownership")
+	time.Sleep(time.Second)
+	tracer.Info("locker1 try to get lock")
+	_, lctx, err := locker.Trylock(ctx, "/test/distributed/locker/key", WithTTL(time.Second*10))
+	tracer.Info(err)
+	if err == nil {
+		tracer.Info("locker1 get the lock ownership")
 
-	select {
-	case <-lctx.Done():
-		tracer.Info("locker1 lose the lock ownership by session closed")
+		select {
+		case <-lctx.Done():
+			tracer.Info("locker1 lose the lock ownership by session closed")
+		}
 	}
+
+	time.Sleep(time.Second * 10)
+	tracer.Info("locker1 try to get lock again")
+	_, lctx, err = locker.Trylock(ctx, "/test/distributed/locker/key", WithTTL(time.Second*10))
+	tracer.Info(err)
+	if err == nil {
+		tracer.Info("locker1 get the lock ownership")
+
+		select {
+		case <-lctx.Done():
+			tracer.Info("locker1 lose the lock ownership by session closed")
+		}
+	}
+
 	wg.Wait()
 }

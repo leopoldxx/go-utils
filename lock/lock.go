@@ -107,18 +107,17 @@ func (l *locker) Trylock(ctx context.Context, key string, ops ...Options) (Unloc
 		go func() {
 			select {
 			case <-s.Done():
-			case <-ctx.Done():
 			case <-cancelCtx.Done():
 			}
 			cancelFunc()
+			newCtx, cancel := context.WithTimeout(context.TODO(), time.Second)
+			defer cancel()
+			mtx.Unlock(newCtx)
 			s.Close()
 		}()
 
 		tmpCh <- result{
 			func() {
-				newCtx, cancel := context.WithTimeout(context.TODO(), time.Second)
-				defer cancel()
-				mtx.Unlock(newCtx)
 				cancelFunc()
 			},
 			cancelCtx,
