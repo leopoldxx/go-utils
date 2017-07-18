@@ -34,7 +34,7 @@ func RecoverWithTrace(name string) Middleware {
 				defer func() {
 					if err := recover(); err != nil {
 						tracer.Error("panic:", tracer.Stack())
-						http.Error(w, "internal error, plz check log!", http.StatusInternalServerError)
+						http.Error(w, "internal panic error, plz check log!", http.StatusInternalServerError)
 					}
 				}()
 				next(w, r)
