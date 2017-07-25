@@ -110,6 +110,7 @@ func (p pinger) recvEchoReplyMessage(ctx context.Context, cb *concurrency.Barrie
 	defer cancel()
 
 	retryCh := make(chan string, retryQueueLen)
+	defer close(retryCh)
 
 	go func(retry <-chan string) {
 		for ip := range retry {
