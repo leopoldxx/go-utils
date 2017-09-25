@@ -206,6 +206,9 @@ func (rest *RestCli) Do() (*Response, error) {
 	}
 
 	tracer := trace.GetTraceFromContext(rest.ctx)
+	if _, exists := rest.headers["x-request-id"]; !exists {
+		rest.headers["x-request-id"] = tracer.ID()
+	}
 	if rest.debug >= Debug1 {
 		tracer.Infof("api: %v, query: %v", rest.api, rest.querys)
 	}

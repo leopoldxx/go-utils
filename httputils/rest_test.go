@@ -72,7 +72,7 @@ func TestRest(t *testing.T) {
 			ResourcePath(test.resource).
 			Into("2xx", msgResp).
 			Into("4xx", errResp).
-			Debug().
+			Debug(Debug2).
 			Do()
 
 		if err != nil {
