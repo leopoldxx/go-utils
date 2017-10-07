@@ -12,6 +12,7 @@ import (
 )
 
 func main() {
+	middleware.SetDefaultResponseInterceptor(middleware.NewLogRecorder())
 	s := server.New(server.ListenAddr(":8001"), server.APIPrefix("/example"))
 	s.Register(new(filesvr))
 	s.ListenAndServe()

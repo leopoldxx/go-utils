@@ -18,11 +18,12 @@ func TestRecover(t *testing.T) {
 		panic("+_+!")
 	}
 
-	tmw := Trace("recover_test")
-	rmw := Recover()
+	rmw := RecoverWithTrace("rwt")
 
-	newhh := Chain(tmw, rmw).HandlerFunc(ph)
-	newhh2 := Chain(tmw, rmw).HandlerFunc(ph2)
+	SetDefaultResponseInterceptor(NewMultiRecorder(NewLogRecorder(), NewLogRecorder(), NewLogRecorder()))
+
+	newhh := Chain(rmw).HandlerFunc(ph)
+	newhh2 := Chain(rmw).HandlerFunc(ph2)
 
 	req := httptest.NewRequest("GET", "http://example.com/foo", nil)
 	w := httptest.NewRecorder()
@@ -32,6 +33,6 @@ func TestRecover(t *testing.T) {
 	if w.Code != 500 {
 		t.Fatal("fail chain handler:", w)
 	}
-	t.Log(string(w.Body.Bytes()))
+	t.Log(len(w.Body.Bytes()), string(w.Body.Bytes()))
 
 }
