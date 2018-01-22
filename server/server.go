@@ -25,9 +25,10 @@ type Server interface {
 }
 
 type options struct {
-	listenAddr string
-	prefix     string
-	debug      bool
+	listenAddr      string
+	prefix          string
+	debug           bool
+	notfoundHandler http.Handler
 }
 
 // Option func for server
@@ -54,6 +55,13 @@ func PProf(d bool) Option {
 	}
 }
 
+// WithNotFoundHandler set NotFoundHandler for router
+func WithNotFoundHandler(h http.Handler) Option {
+	return func(opts *options) {
+		opts.notfoundHandler = h
+	}
+}
+
 func debug(router *mux.Router) {
 	router.Handle("/debug/pprof/", http.HandlerFunc(pprof.Index))
 	router.Handle("/debug/pprof/cmdline", http.HandlerFunc(pprof.Cmdline))
@@ -65,6 +73,7 @@ func debug(router *mux.Router) {
 type server struct {
 	listenAddr string
 	prefix     string
+	rrouter    *mux.Router
 	router     *mux.Router
 }
 
@@ -80,16 +89,19 @@ func New(ops ...Option) Server {
 	s := &server{
 		listenAddr: opts.listenAddr,
 		prefix:     opts.prefix,
-		router:     mux.NewRouter(),
+		rrouter:    mux.NewRouter(),
 	}
 
 	if opts.debug == true {
-		debug(s.router)
+		debug(s.rrouter)
 	}
 
-	//s.router.NotFoundHandler = NotFoundHander{}
+	if opts.notfoundHandler != nil {
+		s.rrouter.NotFoundHandler = opts.notfoundHandler
+	}
+	s.router = s.rrouter
 	if len(s.prefix) != 0 {
-		s.router = s.router.PathPrefix(s.prefix).Subrouter()
+		s.router = s.rrouter.PathPrefix(s.prefix).Subrouter()
 	}
 
 	return s
@@ -106,7 +118,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if s == nil {
 		panic("nil server")
 	}
-	s.router.ServeHTTP(w, r)
+	s.rrouter.ServeHTTP(w, r)
 }
 
 func (s *server) ListenAndServe() error {
@@ -115,7 +127,7 @@ func (s *server) ListenAndServe() error {
 	}
 	httpServer := &http.Server{
 		Addr:    s.listenAddr,
-		Handler: s.router,
+		Handler: s.rrouter,
 	}
 
 	hd := &httpdown.HTTP{

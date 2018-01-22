@@ -21,8 +21,6 @@ func (h *healthz) Register(router *mux.Router) {
 func (h *healthz) check(w http.ResponseWriter, req *http.Request) {
 	tracer := trace.GetTraceFromRequest(req)
 	tracer.Info("check ok")
-
-	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(http.StatusText(http.StatusOK)))
 }
