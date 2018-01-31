@@ -19,13 +19,20 @@ func NewRetriableError(err string) error {
 	return &retriableError{err}
 }
 
-type merrs []string
+type merrs []error
 
 func (e merrs) Err() error {
 	if len(e) == 0 {
 		return nil
 	}
-	return errors.New(strings.Join(e, ";"))
+	if len(e) == 1 {
+		return e[0]
+	}
+	errStr := make([]string, 0, len(e))
+	for i := range e {
+		errStr = append(errStr, e[i].Error())
+	}
+	return errors.New(strings.Join(errStr, ";"))
 }
 
 // Do will retry attempts time after callback failed, and wait for d duration between each callback
@@ -39,7 +46,7 @@ func Do(attempts int, callback func() error, d time.Duration) error {
 		if err == nil {
 			return nil
 		}
-		errs = append(errs, err.Error())
+		errs = append(errs, err)
 		if _, ok := err.(*retriableError); !ok {
 			return errs.Err()
 		}
