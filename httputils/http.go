@@ -9,16 +9,11 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 )
 
 // DefaultHTTPClient will return a default configured http client
 var DefaultHTTPClient = func() *http.Client {
-	const (
-		defaultOperationTimeout = time.Millisecond * 200
-	)
 	return &http.Client{
-		Timeout: defaultOperationTimeout,
 		Transport: &http.Transport{
 			//DisableKeepAlives: true,
 			TLSClientConfig: &tls.Config{
