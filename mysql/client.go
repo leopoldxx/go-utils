@@ -74,6 +74,11 @@ type Client struct {
 	db *sqlx.DB
 }
 
+// DB handler of the client
+func (cli *Client) DB() *sqlx.DB {
+	return cli.db
+}
+
 // Close the db behind the mysql client
 func (cli *Client) Close() error {
 	if cli == nil || cli.db == nil {
