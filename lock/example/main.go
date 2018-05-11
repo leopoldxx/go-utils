@@ -7,11 +7,12 @@ import (
 
 	"github.com/coreos/etcd/clientv3"
 	"github.com/leopoldxx/go-utils/lock"
+	"github.com/leopoldxx/go-utils/trace"
 )
 
 func newClientv3() *clientv3.Client {
 	cli, err := clientv3.New(clientv3.Config{
-		Endpoints:   []string{"http://127.0.0.1:2389"},
+		Endpoints:   []string{"http://10.0.2.15:2389"},
 		DialTimeout: 5 * time.Second,
 	})
 	if err != nil {
@@ -22,24 +23,36 @@ func newClientv3() *clientv3.Client {
 
 func main() {
 	locker := lock.New(newClientv3())
+	ctx := trace.WithTraceForContext(context.TODO(), "test-main")
+	tracer := trace.GetTraceFromContext(ctx)
+	tracer.Info("begin test")
 
-	unlock, ctx, err := locker.Trylock(context.TODO(), "/lock", lock.WithTTL(time.Second*10))
+	unlock, ctx2, err := locker.Trylock(ctx, "/lock", lock.WithTTL(time.Second*10))
 	if err != nil {
-		log.Printf("lock failed: %s", err)
+		tracer.Warnf("lock failed: %s", err)
+		return
 	}
-	log.Println("safe")
 
 	select {
 	case <-ctx.Done():
-	case <-time.After(time.Minute):
+	case <-time.After(10 * time.Second):
 	}
-	log.Println("safe")
+	go func(ctx context.Context) {
+		tracer := trace.GetTraceFromContext(ctx)
+		tracer.Info("test context")
+	}(ctx2)
+
+	tracer.Info("safe")
 	unlock()
 
-	unlock, ctx, err = locker.Trylock(context.TODO(), "/lock", lock.WithTTL(time.Minute*10))
+	unlock, ctx3, err := locker.Trylock(ctx2, "/lock", lock.WithTTL(time.Minute*10))
 	if err != nil {
-		log.Printf("lock failed: %s", err)
+		tracer.Infof("lock failed: %s", err)
+		return
 	}
-	log.Println("safe")
+	go func(ctx context.Context) {
+		tracer := trace.GetTraceFromContext(ctx)
+		tracer.Info("test context")
+	}(ctx3)
 	unlock()
 }

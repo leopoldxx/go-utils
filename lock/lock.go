@@ -84,7 +84,7 @@ func (l *locker) Trylock(ctx context.Context, key string, ops ...Options) (Unloc
 		s, err := concurrency.NewSession(l.etcdCli, concurrency.WithContext(cancelCtx), concurrency.WithTTL(1 /* 1s */))
 		if err != nil {
 			cancelFunc()
-			tmpCh <- result{nil, nil, err}
+			tmpCh <- result{func() {}, nil, err}
 			return
 		}
 
@@ -116,11 +116,19 @@ func (l *locker) Trylock(ctx context.Context, key string, ops ...Options) (Unloc
 			s.Close()
 		}()
 
+		newCtx, newCancel := context.WithCancel(ctx)
+		go func(ctx context.Context, cancel context.CancelFunc) {
+			select {
+			case <-ctx.Done():
+			}
+			cancel()
+		}(cancelCtx, newCancel)
+
 		tmpCh <- result{
 			func() {
 				cancelFunc()
 			},
-			cancelCtx,
+			newCtx,
 			nil,
 		}
 	}()
