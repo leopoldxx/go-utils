@@ -57,7 +57,7 @@ type Trace interface {
 	// Errorf will print the args with a format as the error level log
 	Errorf(format string, args ...interface{})
 	// Stack will return current stack
-	Stack() string
+	Stack(all ...bool) string
 	// String will return a string-serialized trace
 	String() string
 }
@@ -170,7 +170,7 @@ func (t *trace) Duration() time.Duration {
 }
 
 // copy this from glog
-func stacks(all bool) []byte {
+func Stacks(all bool) []byte {
 	n := 10000
 	if all {
 		n = 100000
@@ -191,8 +191,12 @@ func (t *trace) String() string {
 	return t.header()
 }
 
-func (t *trace) Stack() string {
-	return string(stacks(true))
+func (t *trace) Stack(all ...bool) string {
+	dumpAll := false
+	if len(all) > 0 {
+		dumpAll = all[0]
+	}
+	return string(Stacks(dumpAll))
 }
 
 func (t *trace) log(out func(depth int, args ...interface{}), args ...interface{}) {
