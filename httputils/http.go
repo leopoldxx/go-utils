@@ -32,47 +32,38 @@ type Response struct {
 }
 
 // Do will excute the request  with the default http client
-func Do(req *http.Request) (Response, error) {
+func Do(req *http.Request) (*Response, error) {
 	return ClientDo(DefaultHTTPClient, req)
 }
 
 // ClientDo will excute the request with a specific http client
-func ClientDo(client *http.Client, req *http.Request, streamResp ...bool) (Response, error) {
-	// TODO: process can be canceled by context
-	//ctx := req.Context()
-	//select {
-	//}
+func ClientDo(client *http.Client, req *http.Request, streamResp ...bool) (*Response, error) {
 	isStream := false
 	if len(streamResp) > 0 && streamResp[0] == true {
 		isStream = true
 	}
 	resp, err := client.Do(req)
-	if !isStream && resp != nil {
-		defer resp.Body.Close()
-	}
 	if err != nil {
-		if isStream && resp != nil {
-			resp.Body.Close()
-		}
-		return Response{}, fmt.Errorf(
-			"do request(%s) failed: %s", req.URL, err)
+		return nil, err
 	}
 
 	// return a stream
 	if isStream {
-		return Response{
+		return &Response{
 			Status:     resp.StatusCode,
 			Header:     resp.Header,
 			BodyStream: resp.Body,
 		}, nil
 	}
+
+	defer resp.Body.Close()
 	// return the data
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return Response{}, fmt.Errorf(
+		return nil, fmt.Errorf(
 			"read response body failed:%v", err)
 	}
-	return Response{
+	return &Response{
 			Status: resp.StatusCode,
 			Header: resp.Header,
 			Body:   body,
@@ -105,27 +96,27 @@ func NewRequest(ctx context.Context, method string, url string, headers map[stri
 	return req, nil
 }
 
-func doRequest(ctx context.Context, method string, url string, headers map[string]string, query url.Values, body io.Reader) (Response, error) {
+func doRequest(ctx context.Context, method string, url string, headers map[string]string, query url.Values, body io.Reader) (*Response, error) {
 	req, err := NewRequest(ctx, method, url, headers, query, body)
 	if err != nil {
-		return Response{}, err
+		return nil, err
 	}
 
 	return Do(req)
 }
 
 // Get will get remote data with custom headers
-func Get(ctx context.Context, url string, headers map[string]string, query url.Values) (Response, error) {
+func Get(ctx context.Context, url string, headers map[string]string, query url.Values) (*Response, error) {
 	return doRequest(ctx, "GET", url, headers, query, nil)
 }
 
 // Post will create remote resource
-func Post(ctx context.Context, url string, headers map[string]string, query url.Values, body io.Reader) (Response, error) {
+func Post(ctx context.Context, url string, headers map[string]string, query url.Values, body io.Reader) (*Response, error) {
 	return doRequest(ctx, "POST", url, headers, query, body)
 }
 
 // PostForm will create remote resource with x-www-form-urlencoded format data
-func PostForm(ctx context.Context, url string, form url.Values) (Response, error) {
+func PostForm(ctx context.Context, url string, form url.Values) (*Response, error) {
 	return Post(ctx,
 		url,
 		map[string]string{"Content-Type": "application/x-www-form-urlencoded"},
@@ -134,16 +125,16 @@ func PostForm(ctx context.Context, url string, form url.Values) (Response, error
 }
 
 // Put will update a remote resource
-func Put(ctx context.Context, url string, headers map[string]string, query url.Values, body io.Reader) (Response, error) {
+func Put(ctx context.Context, url string, headers map[string]string, query url.Values, body io.Reader) (*Response, error) {
 	return doRequest(ctx, "PUT", url, headers, query, body)
 }
 
 // Patch will partially update a remote resource
-func Patch(ctx context.Context, url string, headers map[string]string, query url.Values, body io.Reader) (Response, error) {
+func Patch(ctx context.Context, url string, headers map[string]string, query url.Values, body io.Reader) (*Response, error) {
 	return doRequest(ctx, "PATCH", url, headers, query, body)
 }
 
 // Delete will delete remote resource
-func Delete(ctx context.Context, url string, headers map[string]string, query url.Values) (Response, error) {
+func Delete(ctx context.Context, url string, headers map[string]string, query url.Values) (*Response, error) {
 	return doRequest(ctx, "DELETE", url, headers, query, nil)
 }

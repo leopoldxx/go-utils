@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -266,7 +265,7 @@ func (rest *RestCli) Do() (*Response, error) {
 		req.Close = true
 	}
 
-	resp, err := ClientDo(rest.cli, req, rest.isStream)
+	resp, err := ClientDo(rest.cli, req, true) // always return  a Body Reader, avoid memory copy
 	if err != nil {
 		if rest.debug >= Debug1 {
 			tracer.Error("do request failed:", err)
@@ -278,14 +277,9 @@ func (rest *RestCli) Do() (*Response, error) {
 	}
 
 	if rest.isStream {
-		return &resp, nil
+		return resp, nil
 	}
-
-	if rest.debug >= Debug2 {
-		if len(resp.Body) > 0 {
-			tracer.Infof("resp body: %v", string(resp.Body))
-		}
-	}
+	defer resp.BodyStream.Close()
 
 	if len(rest.into) > 0 {
 		status := strconv.Itoa(resp.Status)
@@ -298,17 +292,20 @@ func (rest *RestCli) Do() (*Response, error) {
 			}
 			for _, status := range ss {
 				if rsp, exist := rest.into[status]; exist {
-					err = json.Unmarshal(resp.Body, rsp)
+					err = json.NewDecoder(resp.BodyStream).Decode(rsp)
 					if err != nil {
 						if rest.debug >= Debug1 {
-							tracer.Errorf("unmarshal resp failed: %s, body: %s", err, string(resp.Body))
+							tracer.Errorf("unmarshal resp failed: %s", err)
 						}
-						return nil, fmt.Errorf("err: %s, body: %s", err, string(resp.Body))
+						return nil, err
 					}
-					return &resp, nil
+					if rest.debug >= Debug2 {
+						tracer.Infof("resp: %+v", rsp)
+					}
+					return resp, nil
 				}
 			}
 		}
 	}
-	return &resp, nil
+	return resp, nil
 }
